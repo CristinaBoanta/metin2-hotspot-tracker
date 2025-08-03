@@ -12,35 +12,35 @@ function App() {
   const intervalRef = useRef(null)
   const notificationRef = useRef(null)
 
-  // Calculate next hotspot time based on 18:40 start time and 1h 15m intervals
+  // Calculate next hotspot time based on 21:18 start time and 1h 20m intervals
   const calculateNextHotspot = () => {
     const now = new Date()
     
-    // Create a reference point for today at 18:40
+    // Create a reference point for today at 21:18
     const todayBase = new Date(now)
-    todayBase.setHours(18, 40, 0, 0)
+    todayBase.setHours(21, 18, 0, 0)
     
-    // Create a reference point for tomorrow at 18:40
+    // Create a reference point for tomorrow at 18:50
     const tomorrowBase = new Date(todayBase)
     tomorrowBase.setDate(tomorrowBase.getDate() + 1)
     
-    // Find the most recent base time (18:40) that has passed
+    // Find the most recent base time (21:18) that has passed
     let lastBaseTime
     if (now >= todayBase) {
       lastBaseTime = todayBase
     } else {
-      // If we haven't reached 18:40 today, use yesterday's 18:40
+      // If we haven't reached 21:18 today, use yesterday's 21:18
       const yesterdayBase = new Date(todayBase)
       yesterdayBase.setDate(yesterdayBase.getDate() - 1)
       lastBaseTime = yesterdayBase
     }
     
-    // Calculate how many 75-minute intervals have passed since the last base time
+    // Calculate how many 80-minute intervals have passed since the last base time
     const timeSinceLastBase = now.getTime() - lastBaseTime.getTime()
-    const intervalsPassed = Math.floor(timeSinceLastBase / (75 * 60 * 1000))
+    const intervalsPassed = Math.floor(timeSinceLastBase / (80 * 60 * 1000))
     
     // Calculate the next hotspot time
-    const nextTime = new Date(lastBaseTime.getTime() + ((intervalsPassed + 1) * 75 * 60 * 1000))
+    const nextTime = new Date(lastBaseTime.getTime() + ((intervalsPassed + 1) * 80 * 60 * 1000))
     
     return nextTime
   }
@@ -53,11 +53,81 @@ function App() {
     }
   }
 
-  // Send notification
-  const sendNotification = (title, body) => {
+  // Send intrusive notification with multiple alert methods
+  const sendIntrusiveNotification = (title, body) => {
+    // 1. Browser notification (if enabled)
     if (notificationsEnabled && 'Notification' in window) {
-      new Notification(title, { body })
+      try {
+        const notification = new Notification(title, { 
+          body,
+          icon: '/vite.svg',
+          requireInteraction: true, // Keep notification visible until user interacts
+          silent: false, // Ensure sound plays
+          tag: 'fishing-hotspot', // Group notifications
+          badge: '/vite.svg'
+        })
+        
+        // Keep notification open longer for more intrusiveness
+        setTimeout(() => {
+          notification.close()
+        }, 30000) // 30 seconds instead of 10
+      } catch (error) {
+        console.error('Failed to send notification:', error)
+      }
     }
+
+    // 2. Audio alert (works even without notification permission)
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      
+      // Create an attention-grabbing sound pattern
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1)
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2)
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.3)
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+      
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.5)
+      
+      // Play multiple beeps
+      setTimeout(() => {
+        oscillator.frequency.setValueAtTime(1000, audioContext.currentTime)
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.1)
+        oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.2)
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+        
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.5)
+      }, 600)
+    } catch (error) {
+      console.error('Failed to play audio alert:', error)
+    }
+
+    // 3. Page title flashing (works when tab is not focused)
+    let flashCount = 0
+    const originalTitle = document.title
+    const flashInterval = setInterval(() => {
+      document.title = flashCount % 2 === 0 ? '🎣 FISHING HOTSPOT ACTIVE! 🎣' : originalTitle
+      flashCount++
+      if (flashCount >= 10) { // Flash for 5 seconds
+        clearInterval(flashInterval)
+        document.title = originalTitle
+      }
+    }, 500)
+
+    // 4. Console logging for debugging
+    console.log('🎣 INTRUSIVE NOTIFICATION SENT:', title, body)
+    console.log('🎣 FISHING HOTSPOT IS NOW ACTIVE! 🎣')
   }
 
   // Update countdown timer
@@ -70,14 +140,15 @@ function App() {
     
     const timeDiff = next.getTime() - now.getTime()
     
-    if (timeDiff <= 0) {
+    // Check if we're within 1 second of the hotspot time (more reliable trigger)
+    if (timeDiff <= 1000 && timeDiff > -60000) { // Within 1 second before or 1 minute after
       // Hotspot is active
       setIsHotspotActive(true)
       setTimeUntilNext({ hours: 0, minutes: 0, seconds: 0 })
       
-      // Send notification if not already sent
+      // Send intrusive notification if not already sent for this hotspot
       if (!notificationRef.current) {
-        sendNotification('🎣 Metin2 Fishing Hotspot Active!', 'A fishing hotspot is now active!')
+        sendIntrusiveNotification('🎣 Metin2 Fishing Hotspot Active!', 'A fishing hotspot is now active!')
         notificationRef.current = true
         
         // Add to history
@@ -88,7 +159,10 @@ function App() {
       }
     } else {
       setIsHotspotActive(false)
-      notificationRef.current = false
+      // Reset notification flag when we're far from hotspot time
+      if (timeDiff > 60000) { // More than 1 minute away
+        notificationRef.current = false
+      }
       
       const hours = Math.floor(timeDiff / (1000 * 60 * 60))
       const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60))
@@ -155,15 +229,32 @@ function App() {
           )}
         </div>
         
-        <div className="notifications-section">
-          <h3>Notifications</h3>
-          <button 
-            onClick={requestNotificationPermission}
-            className={`notification-btn ${notificationsEnabled ? 'enabled' : 'disabled'}`}
-          >
-            {notificationsEnabled ? '✅ Notifications Enabled' : '🔔 Enable Notifications'}
-          </button>
-        </div>
+                 <div className="notifications-section">
+           <h3>Notifications</h3>
+           <button 
+             onClick={requestNotificationPermission}
+             className={`notification-btn ${notificationsEnabled ? 'enabled' : 'disabled'} btn-margin`}
+           >
+             {notificationsEnabled ? '✅ Notifications Enabled' : '🔔 Enable Notifications'}
+           </button>
+           
+           <button 
+             onClick={() => sendIntrusiveNotification('🎣 TEST: Fishing Hotspot Active!', 'This is a test notification to check all alert methods!')}
+             className="test-notification-btn"
+             style={{ 
+               marginTop: '10px',
+               padding: '12px 24px',
+               backgroundColor: '#ff6b6b',
+               color: 'white',
+               border: 'none',
+               borderRadius: '40px',
+               cursor: 'pointer',
+               fontSize: '1.1rem'
+             }}
+           >
+             🧪 Test All Notifications Now
+           </button>
+         </div>
         
         {hotspotHistory.length > 0 && (
           <div className="history-section">
@@ -181,8 +272,8 @@ function App() {
         <div className="info-section">
           <h3>How it works</h3>
           <ul>
-            <li>Fishing hotspots occur every 1 hour and 15 minutes</li>
-            <li>Base time is 18:40 (6:40 PM)</li>
+            <li>Fishing hotspots occur every 1 hour and 20 minutes</li>
+            <li>Base time is 21:18 (9:18 PM)</li>
             <li>The app tracks time even when closed</li>
             <li>Enable notifications to get alerts when hotspots are active</li>
           </ul>
