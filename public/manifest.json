@@ -1,0 +1,19 @@
+{
+  "name": "Metin2 Fishing Hotspot Tracker",
+  "short_name": "Metin2 Tracker",
+  "description": "Track fishing hotspots in Metin2 with background notifications",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e3c72",
+  "theme_color": "#2a5298",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["games", "utilities"],
+  "lang": "en",
+  "orientation": "portrait-primary"
+} 

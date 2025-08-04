@@ -139,6 +139,38 @@ body {
   margin-right: 5rem;
 }
 
+.sw-status {
+  margin: 15px 0;
+  padding: 10px 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid #ffd700;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+}
+
+.status {
+  font-weight: bold;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-left: 10px;
+}
+
+.status.active {
+  background: rgba(0, 255, 136, 0.3);
+  color: #00ff88;
+}
+
+.status.failed {
+  background: rgba(255, 107, 107, 0.3);
+  color: #ff6b6b;
+}
+
+.status.initializing {
+  background: rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
 .history-list {
   display: flex;
   flex-direction: column;

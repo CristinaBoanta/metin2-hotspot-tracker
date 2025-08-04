@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import ServiceWorkerManager from './sw-register'
 
 function App() {
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -8,9 +9,11 @@ function App() {
   const [isHotspotActive, setIsHotspotActive] = useState(false)
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [hotspotHistory, setHotspotHistory] = useState([])
+  const [swStatus, setSwStatus] = useState('initializing')
   
   const intervalRef = useRef(null)
   const notificationRef = useRef(null)
+  const swManager = useRef(new ServiceWorkerManager())
 
   // Calculate next hotspot time based on 21:18 start time and 1h 20m intervals
   const calculateNextHotspot = () => {
@@ -173,8 +176,23 @@ function App() {
   }
 
   useEffect(() => {
-    // Request notification permission on mount
-    requestNotificationPermission()
+    // Initialize service worker and request notification permission
+    const initializeApp = async () => {
+      // Request notification permission
+      await requestNotificationPermission()
+      
+      // Register service worker
+      const swRegistered = await swManager.current.register()
+      if (swRegistered) {
+        setSwStatus('active')
+        // Start background checks in service worker
+        await swManager.current.startBackgroundChecks()
+      } else {
+        setSwStatus('failed')
+      }
+    }
+
+    initializeApp()
     
     // Initial update
     updateCountdown()
@@ -182,10 +200,27 @@ function App() {
     // Set up interval for countdown updates
     intervalRef.current = setInterval(updateCountdown, 1000)
     
+    // Listen for hotspot events from service worker
+    const handleHotspotActive = (event) => {
+      console.log('Hotspot active event received from service worker')
+      setIsHotspotActive(true)
+      sendIntrusiveNotification('🎣 Metin2 Fishing Hotspot Active!', 'A fishing hotspot is now active!')
+      
+      // Add to history
+      const now = new Date()
+      setHotspotHistory(prev => [...prev, {
+        time: now.toLocaleTimeString(),
+        date: now.toLocaleDateString()
+      }])
+    }
+
+    window.addEventListener('hotspotActive', handleHotspotActive)
+    
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
       }
+      window.removeEventListener('hotspotActive', handleHotspotActive)
     }
   }, [])
 
@@ -238,22 +273,44 @@ function App() {
              {notificationsEnabled ? '✅ Notifications Enabled' : '🔔 Enable Notifications'}
            </button>
            
-           <button 
-             onClick={() => sendIntrusiveNotification('🎣 TEST: Fishing Hotspot Active!', 'This is a test notification to check all alert methods!')}
-             className="test-notification-btn"
-             style={{ 
-               marginTop: '10px',
-               padding: '12px 24px',
-               backgroundColor: '#ff6b6b',
-               color: 'white',
-               border: 'none',
-               borderRadius: '40px',
-               cursor: 'pointer',
-               fontSize: '1.1rem'
-             }}
-           >
-             🧪 Test All Notifications Now
-           </button>
+           <div className="sw-status">
+             <span>Background Service: </span>
+             <span className={`status ${swStatus}`}>
+               {swStatus === 'active' ? '✅ Active' : 
+                swStatus === 'failed' ? '❌ Failed' : 
+                '⏳ Initializing...'}
+             </span>
+           </div>
+           
+                       <button 
+              onClick={() => {
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = '⏳ 5s delay...';
+                button.disabled = true;
+                button.style.backgroundColor = '#666';
+                
+                setTimeout(() => {
+                  sendIntrusiveNotification('🎣 TEST: Fishing Hotspot Active!', 'This is a test notification to check all alert methods!');
+                  button.textContent = originalText;
+                  button.disabled = false;
+                  button.style.backgroundColor = '#ff6b6b';
+                }, 5000);
+              }}
+              className="test-notification-btn"
+              style={{ 
+                marginTop: '10px',
+                padding: '12px 24px',
+                backgroundColor: '#ff6b6b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '40px',
+                cursor: 'pointer',
+                fontSize: '1.1rem'
+              }}
+            >
+              🧪 Test All Notifications Now
+            </button>
          </div>
         
         {hotspotHistory.length > 0 && (
