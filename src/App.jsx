@@ -11,28 +11,35 @@ function App() {
   const [hotspotHistory, setHotspotHistory] = useState([])
   const [swStatus, setSwStatus] = useState('initializing')
   
+  // Simplified calibration state
+  const [calibratedBaseTime, setCalibratedBaseTime] = useState(null)
+  
+  // Manual calibration state
+  const [manualCalibrationTime, setManualCalibrationTime] = useState('')
+  const [showManualCalibration, setShowManualCalibration] = useState(false)
+  
   const intervalRef = useRef(null)
   const notificationRef = useRef(null)
   const swManager = useRef(new ServiceWorkerManager())
 
-  // Calculate next hotspot time based on 21:18 start time and 1h 20m intervals
+  // Calculate next hotspot time based on calibrated base time or default 21:18
   const calculateNextHotspot = () => {
     const now = new Date()
     
-    // Create a reference point for today at 21:18
+    // Use calibrated base time if available, otherwise use default 21:18
+    const baseHour = calibratedBaseTime ? calibratedBaseTime.getHours() : 21
+    const baseMinute = calibratedBaseTime ? calibratedBaseTime.getMinutes() : 18
+    
+    // Create a reference point for today at the base time
     const todayBase = new Date(now)
-    todayBase.setHours(21, 18, 0, 0)
+    todayBase.setHours(baseHour, baseMinute, 0, 0)
     
-    // Create a reference point for tomorrow at 18:50
-    const tomorrowBase = new Date(todayBase)
-    tomorrowBase.setDate(tomorrowBase.getDate() + 1)
-    
-    // Find the most recent base time (21:18) that has passed
+    // Find the most recent base time that has passed
     let lastBaseTime
     if (now >= todayBase) {
       lastBaseTime = todayBase
     } else {
-      // If we haven't reached 21:18 today, use yesterday's 21:18
+      // If we haven't reached the base time today, use yesterday's base time
       const yesterdayBase = new Date(todayBase)
       yesterdayBase.setDate(yesterdayBase.getDate() - 1)
       lastBaseTime = yesterdayBase
@@ -47,6 +54,68 @@ function App() {
     
     return nextTime
   }
+
+  // Simple calibration to current time
+  const calibrateToCurrentTime = () => {
+    const now = new Date()
+    setCalibratedBaseTime(now)
+    
+    // Save to localStorage
+    localStorage.setItem('metin2_calibrated_base_time', now.getTime().toString())
+    
+    // Force immediate recalculation
+    updateCountdown()
+  }
+
+  // Reset calibration to default
+  const resetCalibration = () => {
+    setCalibratedBaseTime(null)
+    localStorage.removeItem('metin2_calibrated_base_time')
+    
+    // Force immediate recalculation
+    updateCountdown()
+  }
+
+  // Manual calibration with timepicker
+  const calibrateToManualTime = () => {
+    if (!manualCalibrationTime) {
+      alert('Please select a time for calibration')
+      return
+    }
+
+    // Parse the time input (format: HH:MM)
+    const [hours, minutes] = manualCalibrationTime.split(':').map(Number)
+    
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      alert('Please enter a valid time (HH:MM format)')
+      return
+    }
+
+    // Create a new Date object with the selected time
+    const manualTime = new Date()
+    manualTime.setHours(hours, minutes, 0, 0)
+    
+    setCalibratedBaseTime(manualTime)
+    
+    // Save to localStorage
+    localStorage.setItem('metin2_calibrated_base_time', manualTime.getTime().toString())
+    
+    // Reset the form
+    setManualCalibrationTime('')
+    setShowManualCalibration(false)
+    
+    // Force immediate recalculation
+    updateCountdown()
+  }
+
+  // Load calibration from localStorage on app start
+  useEffect(() => {
+    const savedCalibration = localStorage.getItem('metin2_calibrated_base_time')
+    if (savedCalibration) {
+      const savedTime = new Date(parseInt(savedCalibration))
+      setCalibratedBaseTime(savedTime)
+    }
+  }, [])
 
   // Request notification permission
   const requestNotificationPermission = async () => {
@@ -222,7 +291,7 @@ function App() {
       }
       window.removeEventListener('hotspotActive', handleHotspotActive)
     }
-  }, [])
+  }, [calibratedBaseTime]) // Add calibratedBaseTime as dependency
 
   const formatTime = (time) => {
     return time.toLocaleTimeString('en-US', { 
@@ -263,55 +332,134 @@ function App() {
             </div>
           )}
         </div>
-        
-                 <div className="notifications-section">
-           <h3>Notifications</h3>
-           <button 
-             onClick={requestNotificationPermission}
-             className={`notification-btn ${notificationsEnabled ? 'enabled' : 'disabled'} btn-margin`}
-           >
-             {notificationsEnabled ? '✅ Notifications Enabled' : '🔔 Enable Notifications'}
-           </button>
-           
-           <div className="sw-status">
-             <span>Background Service: </span>
-             <span className={`status ${swStatus}`}>
-               {swStatus === 'active' ? '✅ Active' : 
-                swStatus === 'failed' ? '❌ Failed' : 
-                '⏳ Initializing...'}
-             </span>
-           </div>
-           
-                       <button 
-              onClick={() => {
-                const button = event.target;
-                const originalText = button.textContent;
-                button.textContent = '⏳ 5s delay...';
-                button.disabled = true;
-                button.style.backgroundColor = '#666';
-                
-                setTimeout(() => {
-                  sendIntrusiveNotification('🎣 TEST: Fishing Hotspot Active!', 'This is a test notification to check all alert methods!');
-                  button.textContent = originalText;
-                  button.disabled = false;
-                  button.style.backgroundColor = '#ff6b6b';
-                }, 5000);
-              }}
-              className="test-notification-btn"
-              style={{ 
-                marginTop: '10px',
-                padding: '12px 24px',
-                backgroundColor: '#ff6b6b',
-                color: 'white',
-                border: 'none',
-                borderRadius: '40px',
-                cursor: 'pointer',
-                fontSize: '1.1rem'
-              }}
+
+        {/* Calibration Section */}
+        <div className="calibration-section">
+          <h3>Calibration</h3>
+          <div className="calibration-info">
+            <p>
+              <strong>Current Base Time:</strong> {calibratedBaseTime 
+                ? `${calibratedBaseTime.getHours().toString().padStart(2, '0')}:${calibratedBaseTime.getMinutes().toString().padStart(2, '0')}`
+                : '21:18 (Default)'
+              }
+            </p>
+            <p className="calibration-help">
+              Use "Calibrate Now" when a hotspot starts, or manually set a specific time.
+            </p>
+          </div>
+          
+          <div className="calibration-buttons">
+            <button 
+              onClick={calibrateToCurrentTime}
+              className="calibrate-btn"
             >
-              🧪 Test All Notifications Now
+              🔧 Calibrate Now
             </button>
-         </div>
+            
+            <button 
+              onClick={() => setShowManualCalibration(!showManualCalibration)}
+              className="manual-calibrate-btn"
+            >
+              ⏰ Manual Calibration
+            </button>
+            
+            {calibratedBaseTime && (
+              <button 
+                onClick={resetCalibration}
+                className="reset-calibration-btn"
+              >
+                🔄 Reset to Default
+              </button>
+            )}
+          </div>
+
+          {/* Manual Calibration Form */}
+          {showManualCalibration && (
+            <div className="manual-calibration-form">
+              <h4>Set Manual Base Time</h4>
+              <p>
+                Enter the time when a hotspot should start (24-hour format: HH:MM)
+              </p>
+              
+              <div className="manual-calibration-controls">
+                <input
+                  type="time"
+                  value={manualCalibrationTime}
+                  onChange={(e) => setManualCalibrationTime(e.target.value)}
+                />
+                <button
+                  onClick={calibrateToManualTime}
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={() => {
+                    setShowManualCalibration(false)
+                    setManualCalibrationTime('')
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              
+              <div>
+                <strong>Example:</strong> If you know a hotspot starts at 14:30, enter "14:30" and click Apply.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Calibration Modal */}
+        {/* This section is removed as calibration is simplified */}
+        
+        <div className="notifications-section">
+          <h3>Notifications</h3>
+          <button 
+            onClick={requestNotificationPermission}
+            className={`notification-btn ${notificationsEnabled ? 'enabled' : 'disabled'} btn-margin`}
+          >
+            {notificationsEnabled ? '✅ Notifications Enabled' : '🔔 Enable Notifications'}
+          </button>
+          
+          <div className="sw-status">
+            <span>Background Service: </span>
+            <span className={`status ${swStatus}`}>
+              {swStatus === 'active' ? '✅ Active' : 
+               swStatus === 'failed' ? '❌ Failed' : 
+               '⏳ Initializing...'}
+            </span>
+          </div>
+          
+          <button 
+            onClick={() => {
+              const button = event.target;
+              const originalText = button.textContent;
+              button.textContent = '⏳ 5s delay...';
+              button.disabled = true;
+              button.style.backgroundColor = '#666';
+              
+              setTimeout(() => {
+                sendIntrusiveNotification('🎣 TEST: Fishing Hotspot Active!', 'This is a test notification to check all alert methods!');
+                button.textContent = originalText;
+                button.disabled = false;
+                button.style.backgroundColor = '#ff6b6b';
+              }, 5000);
+            }}
+            className="test-notification-btn"
+            style={{ 
+              marginTop: '10px',
+              padding: '12px 24px',
+              backgroundColor: '#ff6b6b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '40px',
+              cursor: 'pointer',
+              fontSize: '1.1rem'
+            }}
+          >
+            🧪 Test All Notifications Now
+          </button>
+        </div>
         
         {hotspotHistory.length > 0 && (
           <div className="history-section">
@@ -330,9 +478,13 @@ function App() {
           <h3>How it works</h3>
           <ul>
             <li>Fishing hotspots occur every 1 hour and 20 minutes</li>
-            <li>Base time is 21:18 (9:18 PM)</li>
+            <li>Base time is {calibratedBaseTime 
+              ? `${calibratedBaseTime.getHours().toString().padStart(2, '0')}:${calibratedBaseTime.getMinutes().toString().padStart(2, '0')}`
+              : '21:18 (Default)'
+            }</li>
             <li>The app tracks time even when closed</li>
             <li>Enable notifications to get alerts when hotspots are active</li>
+            <li>Use calibration when server maintenance delays hotspots</li>
           </ul>
         </div>
       </main>
